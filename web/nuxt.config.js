@@ -82,7 +82,7 @@ export default {
     { src: '~/plugins/custom-components' },
     { src: '~/plugins/klicker' },
     { src: '~/plugins/modern' },
-    { src: '~/plugins/http', mode: 'client' },
+    { src: '~/plugins/http' },
   ],
 
   modules: [
@@ -93,6 +93,7 @@ export default {
     '@nuxtjs/redirect-module',
     '@nuxtjs/sentry',
     '@nuxtjs/sitemap',
+    '~/modules/caching-http',
   ],
 
   buildModules: [

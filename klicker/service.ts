@@ -1,5 +1,5 @@
 import { Config, VisualisationSpec, Cube, Dimension, Metric, MetaGridEntry, SliceValue, CubeQuery, ValueType, CubeResponse, CubeComparingQuery, CubeComparingResponse, MetaGridEntryDiff, ComparingMetaGridEntry, CubeQueryFilter, CubeComparingQueryFilter, SlicerSpec, StaticWidgetSpec, KlickerService, CubeQueryConfiguration, MetricRendererSpec, DimensionRendererSpec } from "./types"
-import cubejs, { CubejsApi, Filter, ResultSet, TQueryOrderObject } from "@cubejs-client/core"
+import cubejs, { CubejsApi, Filter, ITransport, ResultSet, TQueryOrderObject } from "@cubejs-client/core"
 import * as d3format from "d3-format"
 import { format as formatDate, parseISO } from "date-fns"
 import defaultVisualisations from "./visualisations"
@@ -37,6 +37,53 @@ function generateQueryParams(o: Record<string, (string|number|undefined)[]>, pre
 
 class CubeDoesNotMatchQueryError extends Error {}
 
+// adapted from https://github.com/cube-js/cube.js/blob/master/packages/cubejs-client-core/src/HttpTransport.js
+class HttpTransport implements ITransport<ResultSet> {
+  apiUrl: string
+  fetch: any
+
+  constructor(apiUrl: string, fetch: any) {
+    this.apiUrl = apiUrl
+    this.fetch = fetch
+  }
+
+  request(method, { baseRequestId, ...params }) {
+    let spanCounter = 1;
+    const searchParams = new URLSearchParams(
+      params && Object.keys(params)
+        .map(k => ({ [k]: typeof params[k] === 'object' ? JSON.stringify(params[k]) : params[k] }))
+        .reduce((a, b) => ({ ...a, ...b }), {})
+    );
+
+    let url = `${this.apiUrl}/${method}${searchParams.toString().length ? `?${searchParams}` : ''}`;
+
+    const requestMethod = (url.length < 2000 ? 'GET' : 'POST');
+    const headers = {}
+    if (requestMethod === 'POST') {
+      url = `${this.apiUrl}/${method}`;
+      headers['Content-Type'] = 'application/json';
+    }
+
+    // Currently, all methods make GET requests. If a method makes a request with a body payload,
+    // remember to add {'Content-Type': 'application/json'} to the header.
+    const runRequest = () => this.fetch(url, {
+      method: requestMethod,
+      headers: {
+        'x-request-id': baseRequestId && `${baseRequestId}-span-${spanCounter++}`,
+        ...headers
+      },
+      body: requestMethod === 'POST' ? JSON.stringify(params) : null
+    });
+
+    return {
+      async subscribe(callback) {
+        const result = await runRequest();
+        return callback(result, () => this.subscribe(callback));
+      }
+    };
+  }
+}
+
 export default class Klicker implements KlickerService {
   private cubejsApi: CubejsApi
   public visualisations: VisualisationSpec[] = defaultVisualisations
@@ -52,8 +99,13 @@ export default class Klicker implements KlickerService {
       slicers: SlicerSpec[],
       dimensionRenderers: DimensionRendererSpec[],
       metricRenderers: MetricRendererSpec[],
+      fetch: any,
   ) {
-    this.cubejsApi = cubejs('', { apiUrl: cubeUrl + '/cubejs-api/v1' })
+    const apiUrl = cubeUrl + '/cubejs-api/v1'
+    this.cubejsApi = cubejs('', {
+      apiUrl,
+      transport: new HttpTransport(apiUrl, fetch),
+    })
     this.visualisations = defaultVisualisations.concat(visualisations)
     this.staticWidgets = defaultStaticWidgets.concat(staticWidgets)
     this.slicers = slicers

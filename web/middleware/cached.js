@@ -1,5 +1,5 @@
 export default function ({ res }) {
-  if(res != undefined) {
+  if (res != undefined) {
     res.setHeader('Cache-Control', 'public, max-age=60')
   }
 }

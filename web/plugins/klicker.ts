@@ -57,7 +57,14 @@ class CustomKlicker extends Klicker {
       dimensionRenderers: DimensionRendererSpec[],
       metricRenderers: MetricRendererSpec[],
       private context: Context) {
-    super(cubeUrl, config, visualisations, staticWidgets, slicers, dimensionRenderers, metricRenderers)
+    super(cubeUrl, config, visualisations, staticWidgets, slicers, dimensionRenderers, metricRenderers, (url, { method, headers, credentials, body }) => {
+      if (method == 'GET') {
+        return context.$http.get(url, { headers })
+      }
+      if (method == 'POST') {
+        return context.$http.post(url, body, { headers })
+      }
+    })
   }
 
   // override Klicker.$t
